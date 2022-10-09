@@ -1,13 +1,16 @@
-log-malloc-simple
+TODO! - to rewrite!
 =================
 
-*log-malloc-simple* is **pre-loadable** library tracking all  memory allocations of a program. It produces simple text trace output, that makes it easy to find leaks and also identify their origin.
+malloc-stat
+=================
 
-The output of *log-malloc-simple* can be easily parsed by a log analyzer tool. A simple log-analyzer written in Java is also part of this package.
+*malloc-stat* is **pre-loadable** library tracking all memory allocations of a program. It produces simple text trace output by user request, that makes it easy to find leaks and also identify their origin.
 
-## Changes compared to log-malloc2
+The output of *malloc-stat* can be easily parsed by a log analyzer tool.
 
-log-malloc-simple is a much simplified version of log-malloc2. The simplifications and their reason:
+## Changes compared to log-malloc-simple
+
+The simplifications and their reason:
 
 - The return value of all allocations is returned intact. This prevents some crashes that were caused by log-malloc2 due to lack of memory alignment returned by modified calloc method.
 - Only malloc_usable_size() is used to track the size of allocated memory.

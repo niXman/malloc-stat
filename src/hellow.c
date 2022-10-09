@@ -1,7 +1,12 @@
 // Compile: gcc -rdynamic hellow.c
+
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
+#include <dlfcn.h>
+
 void recurseDepth(int n)
 {
 	if(n<1)
@@ -23,8 +28,8 @@ static void printn(char * str, int l)
 	}
 }
 
-int main ()
-{
+
+int main() {
 	printf("Hello World!\n");
 	void * p=malloc(111);
 	free(p);
@@ -47,4 +52,3 @@ int main ()
 	printn(str, l);
 	printf("\n");
 }
-
