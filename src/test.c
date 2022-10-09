@@ -25,68 +25,63 @@ void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr) {
 /*************************************************************************************************/
 
 int test_00() {
-    uint64_t a = 0, d = 0, i = 0;
-    malloc_stat_get_stat(&a, &d, &i);
+    malloc_stat_vars before, after, diff;
 
-    return !(a == 0 && d == 0 && i == 0);
-}
-
-int test_01() {
-    uint64_t a0 = 0, d0 = 0, i0 = 0;
-    uint64_t a1 = 0, d1 = 0, i1 = 0;
-
-    malloc_stat_get_stat(&a0, &d0, &i0);
+    malloc_stat_get_stat(&before);
     void *p = malloc(32);
     memset(p, 'x', 32);
     (void)p;
 
-    malloc_stat_get_stat(&a1, &d1, &i1);
-    if ( a1 != a0+1 ) {
+    malloc_stat_get_stat(&after);
+    diff = malloc_stat_get_diff(&before, &after);
+
+    if ( diff.allocations != 1 ) {
         return 1;
     }
-    if ( d1 != d0 ) {
+    if ( diff.deallocations != 0 ) {
         return 2;
     }
-    if ( i1 != i0+malloc_stat_allocated_size(p) ) {
+    if ( diff.in_use != malloc_stat_allocated_size(p) ) {
         return 3;
     }
 
     return 0;
 }
 
-int test_02() {
-    uint64_t a0 = 0, d0 = 0, i0 = 0;
-    uint64_t a1 = 0, d1 = 0, i1 = 0;
-    uint64_t a2 = 0, d2 = 0, i2 = 0;
+int test_01() {
+    malloc_stat_vars before_malloc, after_malloc
+        ,after_free, diff_after_malloc;
 
-    malloc_stat_get_stat(&a0, &d0, &i0);
+    malloc_stat_get_stat(&before_malloc);
     void *p = malloc(32);
     memset(p, 'x', 32);
     (void)p;
 
-    malloc_stat_get_stat(&a1, &d1, &i1);
-    if ( a1 != a0+1 ) {
+    malloc_stat_get_stat(&after_malloc);
+    diff_after_malloc = malloc_stat_get_diff(&before_malloc, &after_malloc);
+
+    if ( diff_after_malloc.allocations != 1 ) {
         return 1;
     }
-    if ( d1 != d0 ) {
+    if ( diff_after_malloc.deallocations != 0 ) {
         return 2;
     }
     uint64_t allocated_size = malloc_stat_allocated_size(p);
-    if ( i1 != i0 + allocated_size ) {
+    if ( diff_after_malloc.in_use != allocated_size ) {
         return 3;
     }
 
     free(p);
 
-    malloc_stat_get_stat(&a2, &d2, &i2);
-    if ( a2 != a1 ) {
+    malloc_stat_get_stat(&after_free);
+    if ( after_free.allocations != before_malloc.allocations + 1 ) {
         return 4;
     }
-    if ( d2 != d1+1 ) {
+    if ( after_free.deallocations != before_malloc.deallocations + 1 ) {
         return 5;
     }
-    if ( i2 != i1 - allocated_size ) {
-        return 6;
+    if ( after_free.in_use != before_malloc.in_use ) {
+        return 5;
     }
 
     return 0;
@@ -96,13 +91,16 @@ int test_02() {
 
 #define TEST(name) { \
     int r = name(); \
-    fprintf(stdout, "test \"%s\" was %5s, ec=%d\n", #name, (!r ? "OK" : "ERROR"), r); \
+    fprintf(stdout, "test \"%s\" - %5s, ec=%d\n", #name, (!r ? "OK" : "ERROR"), r); \
 }
 
 int main() {
+    /* warming up the output stream so it can allocate required buffers */
+    fprintf(stdout, "warming up the stdout stream!\n");
+    MALLOC_STAT_PRINT("hello from test!", malloc_stat_get_stat);
+
     TEST(test_00);
     TEST(test_01);
-    TEST(test_02);
 }
 
 /*************************************************************************************************/

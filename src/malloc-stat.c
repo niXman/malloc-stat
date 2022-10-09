@@ -105,8 +105,9 @@ static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 
 /* Flag that stores initialization state */
 static sig_atomic_t init_done = LOG_MALLOC_INIT_NULL;
+
 /* output is disabled because the lineno does not exist */
-static bool memlog_disabled = false;
+static bool memlog_disabled = true;
 
 /// On this thread we are currently writing a trace event so prevent self-recursion
 static __thread int in_trace = 0;
@@ -168,13 +169,13 @@ static uint64_t total_allocations = 0;
 static uint64_t total_deallocations = 0;
 static uint64_t total_in_use = 0;
 
-static void malloc_stat_get_stat(uint64_t *allocations, uint64_t *deallocations, uint64_t *in_use) {
+static void malloc_stat_get_stat(malloc_stat_vars *ptr) {
     /* just a compile-tile test for lock-free are available */
-    char _[__atomic_always_lock_free(sizeof(*allocations), allocations) ? 1 : -1]; (void)_;
+    char _[__atomic_always_lock_free(sizeof(ptr->allocations), &(ptr->allocations)) ? 1 : -1]; (void)_;
 
-    *allocations   = __atomic_load_n(&total_allocations, __ATOMIC_SEQ_CST);
-    *deallocations = __atomic_load_n(&total_deallocations, __ATOMIC_SEQ_CST);
-    *in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
+    ptr->allocations   = __atomic_load_n(&total_allocations, __ATOMIC_SEQ_CST);
+    ptr->deallocations = __atomic_load_n(&total_deallocations, __ATOMIC_SEQ_CST);
+    ptr->in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
 }
 
 static inline void log_mem(const char * method, void *ptr, size_t size) {
@@ -187,6 +188,7 @@ static inline void log_mem(const char * method, void *ptr, size_t size) {
         len += snprintf(buf+len, sizeof(buf)-len, "-\n");
         write_log(buf, len);
     }
+
     return;
 }
 
@@ -200,14 +202,16 @@ int malloc_stat_init_lib(void) {
         return 1;
     }
 
-    int w = write(LOG_MALLOC_TRACE_FD, "INIT\n", 5);
-    /* auto-disable trace if file is not open  */
-    if ( w == -1 && errno == EBADF ) {
-        write(STDERR_FILENO, "1022_CLOSE\n", 11);
-        memlog_disabled = true;
-    } else {
-        write(STDERR_FILENO, "1022_OPEN\n", 10);
-        memlog_disabled = false;
+    if ( !memlog_disabled ) {
+        int w = write(LOG_MALLOC_TRACE_FD, "INIT\n", 5);
+        /* auto-disable trace if file is not open  */
+        if ( w == -1 && errno == EBADF ) {
+            write(STDERR_FILENO, "1022_CLOSED\n", 12);
+            memlog_disabled = true;
+        } else {
+            write(STDERR_FILENO, "1022_OPEN\n", 10);
+            memlog_disabled = false;
+        }
     }
 
     /* get real functions pointers */

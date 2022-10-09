@@ -17,21 +17,46 @@
 #include <stdio.h>
 
 #ifdef __cplusplus
-#   define LANG_LINKAGE extern "C"
+#   define MALLOC_STAT_LANG_LINKAGE extern "C"
 #else
-#   define LANG_LINKAGE
+#   define MALLOC_STAT_LANG_LINKAGE
 #endif // __cplusplus
 
 /* will returns the size of really allocated block.
  * just a wraper for the malloc's malloc_usable_size()
  */
-LANG_LINKAGE uint64_t malloc_stat_allocated_size(void *ptr);
+MALLOC_STAT_LANG_LINKAGE
+size_t malloc_stat_allocated_size(void *ptr);
 
-typedef void (*malloc_stat_get_stat_fnptr)(uint64_t *allocations, uint64_t *deallocations, uint64_t *in_use);
+/* the malloc_stat_vars struct is used for retrieving and to calc
+ * a difference betwen "before" and "after" test cases.
+ */
+typedef struct malloc_stat_vars {
+    uint64_t allocations;
+    uint64_t deallocations;
+    uint64_t in_use;
+} malloc_stat_vars;
+
+/* calculate the difference */
+MALLOC_STAT_LANG_LINKAGE
+malloc_stat_vars malloc_stat_get_diff(
+     const malloc_stat_vars *before
+    ,const malloc_stat_vars *after
+);
+
+/* test for equality */
+MALLOC_STAT_LANG_LINKAGE
+int malloc_stat_is_equal(
+     const malloc_stat_vars *l
+    ,const malloc_stat_vars *r
+);
+
+/* the signature of the provided function pointer used to obtain a stat */
+typedef void (*malloc_stat_get_stat_fnptr)(malloc_stat_vars *ptr);
 
 /* the user implemented handler that will be called by malloc-stat.so
  * on its initialization stage to provide to user an address of the function
- * which hi/she can use in his/her code to obtain stat information.
+ * which can be used to obtain a stat information.
  * example:
  * malloc_stat_get_stat_fnptr get_stat = NULL;
  *
@@ -40,11 +65,12 @@ typedef void (*malloc_stat_get_stat_fnptr)(uint64_t *allocations, uint64_t *deal
  * }
  *
  * int main() {
- *     uint64_t allocations = 0, deallocations = 0, inuse = 0;
- *     get_stat(&allocations, &deallocations, &inuse);
+ *     malloc_stat_vars stat;
+ *     get_stat(&stat);
  * }
  */
-LANG_LINKAGE void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr);
+MALLOC_STAT_LANG_LINKAGE
+void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr);
 
 /* just a helpers.
  * example:
@@ -59,16 +85,16 @@ LANG_LINKAGE void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr);
  * }
  */
 #define MALLOC_STAT_FPRINT(stream, caption, fnptr) { \
-    uint64_t allocations, deallocations, in_use; \
+    malloc_stat_vars stat; \
     if ( fnptr ) { \
-        fnptr(&allocations, &deallocations, &in_use); \
+        fnptr(&stat); \
     } \
     fprintf(stream \
         ,"%s: +++ %" PRIu64 ", --- %" PRIu64 ", === %" PRIu64 "\n" \
         ,caption \
-        ,allocations \
-        ,deallocations \
-        ,in_use \
+        ,stat.allocations \
+        ,stat.deallocations \
+        ,stat.in_use \
     ); \
 }
 
