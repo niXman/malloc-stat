@@ -44,11 +44,11 @@ int main() {
 	malloc(200);	// str should not be the "last" block
 	strcpy(str, "Example not freed - lklkhiygkytyfjrtdshtrstreshrsdrshtrsdtrstrsres");
 	int l=strlen(str);
-	printf("Before free: ", str);
+	printf("Before free:\n");
 	printn(str, l);
 	printf("\n");
 	free(str);
-	printf("After free: ", str);
+	printf("After free:\n");
 	printn(str, l);
 	printf("\n");
 }

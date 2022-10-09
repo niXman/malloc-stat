@@ -65,16 +65,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <execinfo.h>
-#include <sys/time.h>
-#include <sys/resource.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
 #include <malloc.h>
-
 #include <dlfcn.h>
-#include <assert.h>
+
 
 #include "api.h"
 
@@ -83,8 +79,6 @@
 #define LOG_BUFSIZE 4096
 /** FD where output is written to. */
 #define LOG_MALLOC_TRACE_FD 1022
-/** Maximum number of stack trace elements. */
-#define LOG_MALLOC_BACKTRACE_COUNT 20
 
 /* init constants */
 #define LOG_MALLOC_INIT_NULL    0xFAB321
@@ -109,16 +103,6 @@ static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 
 #define DL_RESOLVE_CHECK(fn)	\
     ((!real_ ## fn) ? malloc_stat_init_lib() : 1)
-
-struct backtrace_struct {
-    int nptrs;
-    void* buffer[LOG_MALLOC_BACKTRACE_COUNT + 1];  
-};
-
-static const int backtrace_enabled = 0;
-
-#define CREATE_BACKTRACE(BACKTRACE_STRUCT) \
-    (BACKTRACE_STRUCT).nptrs=backtrace(((BACKTRACE_STRUCT).buffer), LOG_MALLOC_BACKTRACE_COUNT)
 
 /* Flag that stores initialization state */
 static sig_atomic_t init_done = LOG_MALLOC_INIT_NULL;
@@ -194,32 +178,14 @@ static void malloc_stat_get_stat(uint64_t *allocations, uint64_t *deallocations,
     *in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
 }
 
-static inline void log_mem(const char * method, void *ptr, size_t size, struct backtrace_struct * bt) {
+static inline void log_mem(const char * method, void *ptr, size_t size) {
 	/* Prevent preparing the output in memory in case the output is already closed */
 	if ( !memlog_disabled ) {
         char buf[LOG_BUFSIZE];
         int len = snprintf(buf, sizeof(buf), "+ %s %zu %p %d %d\n", method,
             size, ptr, getpid(), gettid());
 
-        if ( bt && bt->nptrs > 0 ) {
-            char **names = backtrace_symbols(&(bt->buffer[1]), bt->nptrs-1);
-            if ( names ) {
-                for ( int i = 1; i < bt->nptrs; ++i ) {
-                    if ( names[i] ) {
-                        names[i] = "?";
-                    }
-
-                    len += snprintf(buf+len, sizeof(buf)-len-2, "%s\n", names[i-1]);
-                }
-
-                free(names);
-            } else {
-                for ( int i = 1; i < bt->nptrs; ++i ) {
-                    len += snprintf(buf+len, sizeof(buf)-len-2, "%016lx\n", (long)bt->buffer[i]);
-                }
-            }
-        }
-        len+=snprintf(buf+len, sizeof(buf)-len, "-\n");
+        len += snprintf(buf+len, sizeof(buf)-len, "-\n");
         write_log(buf, len);
     }
 	return;
@@ -295,7 +261,7 @@ int malloc_stat_init_lib(void) {
         */
 
         s = snprintf(buf, sizeof(buf), "+ INIT \n-\n");
-        log_mem("INIT", &static_buffer, static_pointer, NULL);
+        log_mem("INIT", &static_buffer, static_pointer);
         // write_log(buf, s);
     }
     
@@ -372,11 +338,9 @@ void* malloc(size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-	if ( backtrace_enabled && !in_trace ) {
+	if ( !in_trace ) {
 		in_trace = 1;
-		struct backtrace_struct bt;
-		CREATE_BACKTRACE(bt);
-		log_mem("malloc", ret, sizeAllocated, &bt);
+		log_mem("malloc", ret, sizeAllocated);
 		in_trace = 0;
 	}
 
@@ -395,11 +359,9 @@ void* calloc(size_t nmemb, size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-	if ( backtrace_enabled && !in_trace ) {
+	if ( !in_trace ) {
 		in_trace = 1;
-		struct backtrace_struct bt;
-		CREATE_BACKTRACE(bt);
-		log_mem("calloc", ret, sizeAllocated, &bt);
+		log_mem("calloc", ret, sizeAllocated);
 		in_trace = 0;
 	}
 
@@ -422,15 +384,13 @@ void* realloc(void *ptr, size_t size) {
 
     __atomic_add_fetch(&total_in_use, afterSize, __ATOMIC_RELAXED);
 
-    if ( backtrace_enabled && !in_trace ) {
+    if ( !in_trace ) {
         in_trace = 1;
-        struct backtrace_struct bt;
-        CREATE_BACKTRACE(bt);
         if ( ptr ) {
-            log_mem("realloc_free", ptr, prevSize, &bt);
+            log_mem("realloc_free", ptr, prevSize);
         }
 
-        log_mem("realloc_alloc", ret, afterSize, &bt);
+        log_mem("realloc_alloc", ret, afterSize);
         in_trace = 0;
     }
 
@@ -449,11 +409,9 @@ void* memalign(size_t alignment, size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-    if ( backtrace_enabled && !in_trace ) {
+    if ( !in_trace ) {
         in_trace = 1;
-        struct backtrace_struct bt;
-        CREATE_BACKTRACE(bt);
-        log_mem("memalign", ret, sizeAllocated, &bt);
+        log_mem("memalign", ret, sizeAllocated);
         in_trace = 0;
     }
 
@@ -472,18 +430,16 @@ int posix_memalign(void **memptr, size_t alignment, size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-    if ( backtrace_enabled && !in_trace ) {
+    if ( !in_trace ) {
         in_trace = 1;
-        struct backtrace_struct bt;
-        CREATE_BACKTRACE(bt);
-        log_mem("posix_memalign", *memptr, sizeAllocated, &bt);
+        log_mem("posix_memalign", *memptr, sizeAllocated);
         in_trace = 0;
     }
 
     return ret;
 }
 
-void *valloc(size_t size) {
+void* valloc(size_t size) {
     if ( !DL_RESOLVE_CHECK(valloc) ) {
        return NULL;
     }
@@ -495,11 +451,9 @@ void *valloc(size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-    if ( backtrace_enabled && !in_trace ) {
+    if ( !in_trace ) {
         in_trace = 1;
-        struct backtrace_struct bt;
-        CREATE_BACKTRACE(bt);
-        log_mem("valloc", ret, sizeAllocated, &bt);
+        log_mem("valloc", ret, sizeAllocated);
         in_trace = 0;
     }
 
@@ -518,11 +472,9 @@ void* pvalloc(size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-    if ( backtrace_enabled && !in_trace ) {
+    if ( !in_trace ) {
         in_trace = 1;
-        struct backtrace_struct bt;
-        CREATE_BACKTRACE(bt);
-        log_mem("pvalloc", ret, sizeAllocated, &bt);
+        log_mem("pvalloc", ret, sizeAllocated);
         in_trace = 0;
     }
 
@@ -541,11 +493,9 @@ void* aligned_alloc(size_t alignment, size_t size) {
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-    if ( backtrace_enabled && !in_trace ) {
+    if ( !in_trace ) {
         in_trace = 1;
-        struct backtrace_struct bt;
-        CREATE_BACKTRACE(bt);
-        log_mem("aligned_alloc", ret, sizeAllocated, &bt);
+        log_mem("aligned_alloc", ret, sizeAllocated);
         in_trace = 0;
     }
 
@@ -566,22 +516,12 @@ void free(void *ptr) {
         __atomic_sub_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
         real_free(ptr);
+    }
 
-        if ( backtrace_enabled && !in_trace ) {
-            in_trace = 1;
-            struct backtrace_struct bt;
-            CREATE_BACKTRACE(bt);
-            log_mem("free", ptr, sizeAllocated, &bt);
-            in_trace = 0;
-        }
-    } else {
-        if ( backtrace_enabled && !in_trace ) {
-            in_trace = 1;
-            struct backtrace_struct bt;
-            CREATE_BACKTRACE(bt);
-            log_mem("free(NULL)", ptr, sizeAllocated, &bt);
-            in_trace = 0;
-        }
+    if ( !in_trace ) {
+        in_trace = 1;
+        log_mem((ptr ? "free" : "free(NULL)"), ptr, sizeAllocated);
+        in_trace = 0;
     }
 }
 
