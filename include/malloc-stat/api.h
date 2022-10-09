@@ -16,10 +16,14 @@
 #include <inttypes.h>
 #include <stdio.h>
 
+#ifdef __cplusplus
+#   define LANG_LINKAGE extern "C"
+#endif // __cplusplus
+
 /* will returns the size of really allocated block.
  * just a wraper for the malloc's malloc_usable_size()
  */
-uint64_t malloc_stat_allocated_size(void *ptr);
+LANG_LINKAGE uint64_t malloc_stat_allocated_size(void *ptr);
 
 typedef void (*malloc_stat_get_stat_fnptr)(uint64_t *allocations, uint64_t *deallocations, uint64_t *in_use);
 
@@ -38,7 +42,7 @@ typedef void (*malloc_stat_get_stat_fnptr)(uint64_t *allocations, uint64_t *deal
  *     get_stat(&allocations, &deallocations, &inuse);
  * }
  */
-extern void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr);
+LANG_LINKAGE void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr);
 
 /* just a helpers.
  * example:
