@@ -18,6 +18,8 @@
 
 #ifdef __cplusplus
 #   define LANG_LINKAGE extern "C"
+#else
+#   define LANG_LINKAGE
 #endif // __cplusplus
 
 /* will returns the size of really allocated block.
