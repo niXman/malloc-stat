@@ -10,7 +10,7 @@
  * Based on previous implementations by other authors. See their comments below:
  */
 
-#include "api.h"
+#include <malloc-stat/api.h>
 
 #include <stdlib.h>
 #include <unistd.h>

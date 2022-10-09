@@ -1,6 +1,6 @@
 
 SHELL  := /bin/bash
-CFLAGS := -Wall -Wextra -Werror -Wno-unused-result -O2
+CFLAGS := -I$$PWD/../include -Wall -Wextra -Werror -Wno-unused-result -O2
 LDFLAGS:= -fPIC -ldl
 
 .PHONY: all

@@ -57,7 +57,7 @@
 
 /* needed for dlfcn.h */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE	1
+#define _GNU_SOURCE 1
 #endif
 
 #include <stdio.h>
@@ -71,8 +71,7 @@
 #include <malloc.h>
 #include <dlfcn.h>
 
-
-#include "api.h"
+#include <malloc-stat/api.h>
 
 /* config */
 /** Maximum bytes of a single log entry. They are prepared in buffers of this size allocated on the stack.  */
@@ -98,10 +97,10 @@ static void *(*real_pvalloc)(size_t size) = NULL;
 static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 
 /* DL resolving */
-#define DL_RESOLVE(fn)	\
+#define DL_RESOLVE(fn) \
     ((!real_ ## fn) ? (real_ ## fn = dlsym(RTLD_NEXT, # fn)) : (real_ ## fn = ((void *)0x1)))
 
-#define DL_RESOLVE_CHECK(fn)	\
+#define DL_RESOLVE_CHECK(fn) \
     ((!real_ ## fn) ? malloc_stat_init_lib() : 1)
 
 /* Flag that stores initialization state */
@@ -179,8 +178,8 @@ static void malloc_stat_get_stat(uint64_t *allocations, uint64_t *deallocations,
 }
 
 static inline void log_mem(const char * method, void *ptr, size_t size) {
-	/* Prevent preparing the output in memory in case the output is already closed */
-	if ( !memlog_disabled ) {
+    /* Prevent preparing the output in memory in case the output is already closed */
+    if ( !memlog_disabled ) {
         char buf[LOG_BUFSIZE];
         int len = snprintf(buf, sizeof(buf), "+ %s %zu %p %d %d\n", method,
             size, ptr, getpid(), gettid());
@@ -188,7 +187,7 @@ static inline void log_mem(const char * method, void *ptr, size_t size) {
         len += snprintf(buf+len, sizeof(buf)-len, "-\n");
         write_log(buf, len);
     }
-	return;
+    return;
 }
 
 
@@ -264,7 +263,7 @@ int malloc_stat_init_lib(void) {
         log_mem("INIT", &static_buffer, static_pointer);
         // write_log(buf, s);
     }
-    
+
     malloc_stat_fnptr_received(malloc_stat_get_stat);
 
     return 0;
@@ -286,7 +285,7 @@ void malloc_stat_fini_lib(void) {
         write_log(buf, s);
 
         /* maps out here, because dynamic libs could by mapped during run */
-        //		copyfile(maps_head, sizeof(maps_head) - 1, g_maps_path, g_ctx.memlog_fd);
+        //copyfile(maps_head, sizeof(maps_head) - 1, g_maps_path, g_ctx.memlog_fd);
     }
 
     return;
@@ -327,45 +326,45 @@ static inline void * calloc_static(size_t nmemb, size_t size) {
  */
 
 void* malloc(size_t size) {
-	if ( !DL_RESOLVE_CHECK(malloc) ) {
-		return calloc_static(size, 1);
-	}
+    if ( !DL_RESOLVE_CHECK(malloc) ) {
+        return calloc_static(size, 1);
+    }
 
     __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
 
-	void *ret = real_malloc(size);
+    void *ret = real_malloc(size);
     size_t sizeAllocated = malloc_usable_size(ret);
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-	if ( !in_trace ) {
-		in_trace = 1;
-		log_mem("malloc", ret, sizeAllocated);
-		in_trace = 0;
-	}
+    if ( !in_trace ) {
+        in_trace = 1;
+        log_mem("malloc", ret, sizeAllocated);
+        in_trace = 0;
+    }
 
-	return ret;
+    return ret;
 }
 
 void* calloc(size_t nmemb, size_t size) {
-	if ( !DL_RESOLVE_CHECK(calloc) ) {
-		return calloc_static(nmemb, size);
-	}
+    if ( !DL_RESOLVE_CHECK(calloc) ) {
+        return calloc_static(nmemb, size);
+    }
 
     __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
 
-	void *ret = real_calloc(nmemb, size);
-	size_t sizeAllocated = malloc_usable_size(ret);
+    void *ret = real_calloc(nmemb, size);
+    size_t sizeAllocated = malloc_usable_size(ret);
 
     __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
 
-	if ( !in_trace ) {
-		in_trace = 1;
-		log_mem("calloc", ret, sizeAllocated);
-		in_trace = 0;
-	}
+    if ( !in_trace ) {
+        in_trace = 1;
+        log_mem("calloc", ret, sizeAllocated);
+        in_trace = 0;
+    }
 
-	return ret;
+    return ret;
 }
 
 void* realloc(void *ptr, size_t size) {
