@@ -169,13 +169,17 @@ static uint64_t total_allocations = 0;
 static uint64_t total_deallocations = 0;
 static uint64_t total_in_use = 0;
 
-static void malloc_stat_get_stat(malloc_stat_vars *ptr) {
+/* stat routine */
+malloc_stat_vars malloc_stat_get_stat(void) {
+    malloc_stat_vars res;
     /* just a compile-tile test for lock-free are available */
-    char _[__atomic_always_lock_free(sizeof(ptr->allocations), &(ptr->allocations)) ? 1 : -1]; (void)_;
+    char _[__atomic_always_lock_free(sizeof(res.allocations), &(res.allocations)) ? 1 : -1]; (void)_;
 
-    ptr->allocations   = __atomic_load_n(&total_allocations, __ATOMIC_SEQ_CST);
-    ptr->deallocations = __atomic_load_n(&total_deallocations, __ATOMIC_SEQ_CST);
-    ptr->in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
+    res.allocations   = __atomic_load_n(&total_allocations, __ATOMIC_SEQ_CST);
+    res.deallocations = __atomic_load_n(&total_deallocations, __ATOMIC_SEQ_CST);
+    res.in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
+
+    return res;
 }
 
 static inline void log_mem(const char * method, void *ptr, size_t size) {
@@ -191,8 +195,6 @@ static inline void log_mem(const char * method, void *ptr, size_t size) {
 
     return;
 }
-
-
 
 int malloc_stat_init_lib(void) {
     /* check already initialized */
@@ -267,8 +269,6 @@ int malloc_stat_init_lib(void) {
         log_mem("INIT", &static_buffer, static_pointer);
         // write_log(buf, s);
     }
-
-    malloc_stat_fnptr_received(malloc_stat_get_stat);
 
     return 0;
 }

@@ -11,10 +11,10 @@ malloc-stat.so: malloc-stat.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -nostartfiles malloc-stat.c -o malloc-stat.so
 
 test: test.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -rdynamic test.c api.c -o test
+	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o test
 
 hellow: hellow.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -rdynamic hellow.c -o hellow
+	$(CC) $(CFLAGS) $(LDFLAGS) hellow.c -o hellow
 
 run-test: test malloc-stat.so
 	LD_PRELOAD=./malloc-stat.so ./test

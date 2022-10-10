@@ -15,25 +15,22 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 
-malloc_stat_get_stat_fnptr malloc_stat_get_stat = NULL;
-
-void malloc_stat_fnptr_received(malloc_stat_get_stat_fnptr fnptr) {
-    malloc_stat_get_stat = fnptr;
-}
+malloc_stat_get_stat_fnptr get_stat = NULL;
 
 /*************************************************************************************************/
 
 int test_00() {
     malloc_stat_vars before, after, diff;
 
-    malloc_stat_get_stat(&before);
+    before = get_stat();
     void *p = malloc(32);
     memset(p, 'x', 32);
     (void)p;
 
-    malloc_stat_get_stat(&after);
-    diff = malloc_stat_get_diff(&before, &after);
+    after = get_stat();
+    diff = MALLOC_STAT_GET_DIFF(before, after);
 
     if ( diff.allocations != 1 ) {
         return 1;
@@ -41,7 +38,7 @@ int test_00() {
     if ( diff.deallocations != 0 ) {
         return 2;
     }
-    if ( diff.in_use != malloc_stat_allocated_size(p) ) {
+    if ( diff.in_use != MALLOC_STAT_ALLOCATED_SIZE(p) ) {
         return 3;
     }
 
@@ -52,13 +49,13 @@ int test_01() {
     malloc_stat_vars before_malloc, after_malloc
         ,after_free, diff_after_malloc;
 
-    malloc_stat_get_stat(&before_malloc);
+    before_malloc = get_stat();
     void *p = malloc(32);
     memset(p, 'x', 32);
     (void)p;
 
-    malloc_stat_get_stat(&after_malloc);
-    diff_after_malloc = malloc_stat_get_diff(&before_malloc, &after_malloc);
+    after_malloc = get_stat();
+    diff_after_malloc = MALLOC_STAT_GET_DIFF(before_malloc, after_malloc);
 
     if ( diff_after_malloc.allocations != 1 ) {
         return 1;
@@ -66,14 +63,14 @@ int test_01() {
     if ( diff_after_malloc.deallocations != 0 ) {
         return 2;
     }
-    uint64_t allocated_size = malloc_stat_allocated_size(p);
+    uint64_t allocated_size = MALLOC_STAT_ALLOCATED_SIZE(p);
     if ( diff_after_malloc.in_use != allocated_size ) {
         return 3;
     }
 
     free(p);
 
-    malloc_stat_get_stat(&after_free);
+    after_free = get_stat();
     if ( after_free.allocations != before_malloc.allocations + 1 ) {
         return 4;
     }
@@ -97,7 +94,11 @@ int test_01() {
 int main() {
     /* warming up the output stream so it can allocate required buffers */
     fprintf(stdout, "warming up the stdout stream!\n");
-    MALLOC_STAT_PRINT("hello from test!", malloc_stat_get_stat);
+
+    get_stat = MALLOC_STAT_GET_STAT_FNPTR();
+    assert(get_stat);
+
+    MALLOC_STAT_PRINT("hello from test!", get_stat);
 
     TEST(test_00);
     TEST(test_01);
