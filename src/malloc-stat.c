@@ -218,20 +218,26 @@ static uint64_t peak_in_use = 0;
 #define MALLOC_STAT_SUB_IN_USE(size) \
     __atomic_sub_fetch(&total_in_use, size, __ATOMIC_RELAXED)
 
-#define MALLOC_STAT_UPDATE_PEAK(new_size) \
-    do { \
-        uint64_t old_size = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST); \
-        if ( old_size >= new_size ) { break; } \
-    } while ( \
-        !__atomic_compare_exchange_n( \
+#define MALLOC_STAT_UPDATE_PEAK() \
+    for ( uint64_t peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
+         ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
+        ; \
+          peak < in_use \
+        ; \
+          peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
+         ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
+    ) { \
+        if ( __atomic_compare_exchange_n( \
              &peak_in_use \
-            ,&old_size \
-            ,new_size \
+            ,&peak \
+            ,in_use \
             ,false \
             ,__ATOMIC_SEQ_CST \
             ,__ATOMIC_RELAXED \
-        ) \
-    );
+        ) ) { \
+            break; \
+        }\
+    }
 
 /* stat routine */
 malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
@@ -428,7 +434,7 @@ void* malloc(size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("malloc", ret, allocated);
 
@@ -447,7 +453,7 @@ void* calloc(size_t nmemb, size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("calloc", ret, allocated);
 
@@ -468,7 +474,7 @@ void* realloc(void *ptr, size_t size) {
             size_t new_size = malloc_usable_size(ret);
 
             MALLOC_STAT_ADD_IN_USE(new_size);
-            MALLOC_STAT_UPDATE_PEAK(allocated);
+            MALLOC_STAT_UPDATE_PEAK();
 
             MALLOC_STAT_INC_DEALLOCATIONS();
             MALLOC_STAT_INC_ALLOCATIONS();
@@ -495,7 +501,7 @@ void* realloc(void *ptr, size_t size) {
         
         MALLOC_STAT_INC_ALLOCATIONS();
         MALLOC_STAT_ADD_IN_USE(allocated);
-        MALLOC_STAT_UPDATE_PEAK(allocated);
+        MALLOC_STAT_UPDATE_PEAK();
 
         MALLOC_STAT_ADD_ALLOCATED(allocated);
 
@@ -519,7 +525,7 @@ void* memalign(size_t alignment, size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("memalign", ret, allocated);
 
@@ -538,7 +544,7 @@ int posix_memalign(void **ptr, size_t alignment, size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("posix_memalign", *ptr, allocated);
 
@@ -557,7 +563,7 @@ void* valloc(size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("valloc", ret, allocated);
 
@@ -576,7 +582,7 @@ void* pvalloc(size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("pvalloc", ret, allocated);
 
@@ -595,7 +601,7 @@ void* aligned_alloc(size_t alignment, size_t size) {
 
     MALLOC_STAT_ADD_ALLOCATED(allocated);
     MALLOC_STAT_ADD_IN_USE(allocated);
-    MALLOC_STAT_UPDATE_PEAK(allocated);
+    MALLOC_STAT_UPDATE_PEAK();
 
     MALLOC_STAT_TRACE("aligned_alloc", ret, allocated);
 
