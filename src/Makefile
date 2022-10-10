@@ -17,7 +17,7 @@ hellow: hellow.c
 	$(CC) $(CFLAGS) $(LDFLAGS) hellow.c -o hellow
 
 run-test: test malloc-stat.so
-	LD_PRELOAD=./malloc-stat.so ./test
+	LD_PRELOAD=./malloc-stat.so ./test 1022>&1
 
 # Example that must be executed with a java analyzer already existing
 run-hellow-tcp: hellow malloc-stat.so

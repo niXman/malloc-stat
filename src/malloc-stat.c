@@ -107,10 +107,44 @@ static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 static sig_atomic_t init_done = LOG_MALLOC_INIT_NULL;
 
 /* output is disabled because the lineno does not exist */
-static bool memlog_disabled = true;
+static int memlog_disabled = false;
 
-/// On this thread we are currently writing a trace event so prevent self-recursion
+/* log output fd */
+static int memlog_fd = LOG_MALLOC_TRACE_FD;
+
+/* On this thread we are currently writing a trace event so prevent self-recursion */
 static __thread int in_trace = 0;
+
+#define MALLOC_STAT_TRACE(caption, ptr, size) { \
+    if ( !in_trace ) { \
+        in_trace = 1; \
+        log_mem(caption, ptr, size); \
+        in_trace = 0; \
+    } \
+}
+
+#define MALLOC_STAT_WRITE_LOG(ptr, size) \
+    (!memlog_disabled ? write(memlog_fd, buf, size) : 0)
+
+static inline void log_mem(const char *method, void *ptr, size_t size) {
+    /* Prevent preparing the output in memory in case the output is already closed */
+    if ( !memlog_disabled ) {
+        char buf[LOG_BUFSIZE];
+        int len = snprintf(
+             buf
+            ,sizeof(buf)
+            ,"+ %s %zu %p %d %d\n"
+            ,method
+            ,size
+            ,ptr
+            ,getpid()
+            ,gettid()
+        );
+        MALLOC_STAT_WRITE_LOG(buf, len);
+    }
+
+    return;
+}
 
 /*
  *  INTERNAL API FUNCTIONS
@@ -124,9 +158,7 @@ int myStrlen(const char * str) {
 
     return ret;
 }
-/*
- *  LIBRARY INIT/FINI FUNCTIONS
- */
+
 /**
  * Copy data from file to the log.
  */
@@ -150,13 +182,7 @@ static inline void copyfile(const char *head, const char *path, int outfd) {
     return;
 }
 
-static inline void write_log(const char * buf, int size) {
-    if ( !memlog_disabled ) {
-        write(LOG_MALLOC_TRACE_FD, buf, size);
-    }
-}
-
-/** During initialization while the real_* pointer are being set up we can not pass malloc calls to the real
+/* During initialization while the real_* pointer are being set up we can not pass malloc calls to the real
  * malloc.
  * During this time malloc calls allocate memory in this area.
  * After initialization is done this buffer is no longer used.
@@ -165,36 +191,73 @@ static inline void write_log(const char * buf, int size) {
 static char static_buffer[STATIC_SIZE];
 static int static_pointer = 0;
 
+/* stat variables */
 static uint64_t total_allocations = 0;
+static uint64_t total_allocated = 0;
 static uint64_t total_deallocations = 0;
+static uint64_t total_deallocated = 0;
 static uint64_t total_in_use = 0;
+static uint64_t peak_in_use = 0;
+
+/* helpers */
+#define MALLOC_STAT_INC_ALLOCATIONS() \
+    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED)
+
+#define MALLOC_STAT_INC_DEALLOCATIONS() \
+    __atomic_add_fetch(&total_deallocations, 1, __ATOMIC_RELAXED)
+
+#define MALLOC_STAT_ADD_ALLOCATED(size) \
+    __atomic_add_fetch(&total_allocated, size, __ATOMIC_RELAXED)
+
+#define MALLOC_STAT_ADD_DEALLOCATED(size) \
+    __atomic_add_fetch(&total_deallocated, size, __ATOMIC_RELAXED)
+
+#define MALLOC_STAT_ADD_IN_USE(size) \
+    __atomic_add_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+
+#define MALLOC_STAT_SUB_IN_USE(size) \
+    __atomic_sub_fetch(&total_in_use, size, __ATOMIC_RELAXED)
 
 /* stat routine */
-malloc_stat_vars malloc_stat_get_stat(void) {
+malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
     malloc_stat_vars res;
-    /* just a compile-tile test for lock-free are available */
+
+    /* just a compile-time test for lock-free ops on uint64_t */
     char _[__atomic_always_lock_free(sizeof(res.allocations), &(res.allocations)) ? 1 : -1]; (void)_;
 
+    switch ( op ) {
+        case MALLOC_STAT_GET: break;
+        case MALLOC_STAT_RESET: {
+            __atomic_store_n(&total_allocations, 0, __ATOMIC_RELAXED);
+            __atomic_store_n(&total_allocated, 0, __ATOMIC_RELAXED);
+            __atomic_store_n(&total_deallocations, 0, __ATOMIC_RELAXED);
+            __atomic_store_n(&total_deallocated, 0, __ATOMIC_RELAXED);
+            __atomic_store_n(&total_in_use, 0, __ATOMIC_RELAXED);
+            __atomic_store_n(&peak_in_use, 0, __ATOMIC_RELAXED);
+        } break;
+    }
+
     res.allocations   = __atomic_load_n(&total_allocations, __ATOMIC_SEQ_CST);
+    res.allocated     = __atomic_load_n(&total_allocated, __ATOMIC_SEQ_CST);
     res.deallocations = __atomic_load_n(&total_deallocations, __ATOMIC_SEQ_CST);
+    res.deallocated   = __atomic_load_n(&total_deallocated, __ATOMIC_SEQ_CST);
     res.in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
+    res.peak_in_use   = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST);
 
     return res;
 }
 
-static inline void log_mem(const char * method, void *ptr, size_t size) {
-    /* Prevent preparing the output in memory in case the output is already closed */
-    if ( !memlog_disabled ) {
-        char buf[LOG_BUFSIZE];
-        int len = snprintf(buf, sizeof(buf), "+ %s %zu %p %d %d\n", method,
-            size, ptr, getpid(), gettid());
-
-        len += snprintf(buf+len, sizeof(buf)-len, "-\n");
-        write_log(buf, len);
-    }
-
-    return;
+void malloc_stat_change_log_state(int op) {
+    memlog_disabled = !op;
 }
+
+void malloc_stat_set_log_fd(int fd) {
+    memlog_fd = fd;
+}
+
+/*
+ *  LIBRARY INIT/FINI FUNCTIONS
+ */
 
 int malloc_stat_init_lib(void) {
     /* check already initialized */
@@ -205,7 +268,7 @@ int malloc_stat_init_lib(void) {
     }
 
     if ( !memlog_disabled ) {
-        int w = write(LOG_MALLOC_TRACE_FD, "INIT\n", 5);
+        int w = write(memlog_fd, "INIT\n", 5);
         /* auto-disable trace if file is not open  */
         if ( w == -1 && errno == EBADF ) {
             write(STDERR_FILENO, "1022_CLOSED\n", 12);
@@ -239,35 +302,35 @@ int malloc_stat_init_lib(void) {
         char buf[LOG_BUFSIZE + sizeof(path)];
 
         s = snprintf(buf, sizeof(buf), "# PID %u\n", getpid());
-        write_log(buf, s);
+        MALLOC_STAT_WRITE_LOG(buf, s);
 
         s = readlink("/proc/self/exe", path, sizeof(path));
         if ( s > 1 ) {
             path[s] = '\0';
             s = snprintf(buf, sizeof(buf), "# EXE %s\n", path);
-            write_log(buf, s);
+            MALLOC_STAT_WRITE_LOG(buf, s);
         }
 
         s = readlink("/proc/self/cwd", path, sizeof(path));
         if ( s > 1 ) {
             path[s] = '\0';
             s = snprintf(buf, sizeof(buf), "# CWD %s\n", path);
-            write_log(buf, s);
+            MALLOC_STAT_WRITE_LOG(buf, s);
         }
-        copyfile("# MAPS\n", "/proc/self/maps", LOG_MALLOC_TRACE_FD);
+        copyfile("# MAPS\n", "/proc/self/maps", memlog_fd);
         /*
         s = readlink("/proc/self/maps", path, sizeof(path));
         if(s > 1)
         {
         path[s] = '\0';
         s = snprintf(buf, sizeof(buf), "# MAPS %s\n", path);
-        write_log(buf, s);
+        MALLOC_STAT_WRITE_LOG(buf, s);
         }
         */
 
         s = snprintf(buf, sizeof(buf), "+ INIT \n-\n");
         log_mem("INIT", &static_buffer, static_pointer);
-        // write_log(buf, s);
+        // MALLOC_STAT_WRITE_LOG(buf, s);
     }
 
     return 0;
@@ -276,31 +339,40 @@ int malloc_stat_init_lib(void) {
 void malloc_stat_fini_lib(void) {
     /* check already finalized */
     if ( !__sync_bool_compare_and_swap(&init_done,
-        LOG_MALLOC_INIT_DONE, LOG_MALLOC_FINI_DONE) ) {
+        LOG_MALLOC_INIT_DONE, LOG_MALLOC_FINI_DONE) )
+    {
         return;
     }
 
     if ( !memlog_disabled ) {
         int s;
         char buf[LOG_BUFSIZE];
-        // const char maps_head[] = "# FILE /proc/self/maps\n";
 
-        s = snprintf(buf, sizeof(buf), "+ FINI\n-\n");
-        write_log(buf, s);
+        s = snprintf(
+             buf, sizeof(buf)
+            ,"+=============================================================================\n"
+             "| allocs  : %-10" PRIu64 ", deallocs: %-10" PRIu64 ", inuse: %-10" PRIu64 "\n"
+             "| AL bytes: %-10" PRIu64 ", DE bytes: %-10" PRIu64 ", peak : %-10" PRIu64 "\n"
+             "+=============================================================================\n"
+            ,total_allocations, total_deallocations, total_in_use
+            ,total_allocated, total_deallocated, peak_in_use
+        );
 
-        /* maps out here, because dynamic libs could by mapped during run */
-        //copyfile(maps_head, sizeof(maps_head) - 1, g_maps_path, g_ctx.memlog_fd);
+        s += snprintf(buf + s, sizeof(buf) - s, "+ FINI\n-\n");
+        MALLOC_STAT_WRITE_LOG(buf, s);
     }
 
     return;
 }
 
-static void __attribute__ ((constructor))malloc_stat_init(void) {
+static void __attribute__((constructor))
+malloc_stat_init(void) {
     malloc_stat_init_lib();
     return;
 }
 
-static void __attribute__ ((destructor))malloc_stat_fini(void) {
+static void __attribute__((destructor))
+malloc_stat_fini(void) {
     malloc_stat_fini_lib();
     return;
 }
@@ -334,18 +406,15 @@ void* malloc(size_t size) {
         return calloc_static(size, 1);
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
     void *ret = real_malloc(size);
-    size_t sizeAllocated = malloc_usable_size(ret);
+    size_t allocated = malloc_usable_size(ret);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("malloc", ret, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("malloc", ret, allocated);
 
     return ret;
 }
@@ -355,18 +424,15 @@ void* calloc(size_t nmemb, size_t size) {
         return calloc_static(nmemb, size);
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
     void *ret = real_calloc(nmemb, size);
-    size_t sizeAllocated = malloc_usable_size(ret);
+    size_t allocated = malloc_usable_size(ret);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("calloc", ret, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("calloc", ret, allocated);
 
     return ret;
 }
@@ -376,28 +442,51 @@ void* realloc(void *ptr, size_t size) {
         return NULL;
     }
 
-    /* no need to decrement/increment total_allocations in this case */
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    if ( ptr ) {
+        size_t old_size = malloc_usable_size(ptr);
+        MALLOC_STAT_SUB_IN_USE(old_size);
 
-    size_t prevSize = malloc_usable_size(ptr);
-    __atomic_sub_fetch(&total_in_use, prevSize, __ATOMIC_RELAXED);
+        if ( size ) { // realloc case
+            void *ret = real_realloc(ptr, size);
+            size_t new_size = malloc_usable_size(ret);
 
-    void *ret = real_realloc(ptr, size);
-    size_t afterSize = malloc_usable_size(ret);
+            MALLOC_STAT_ADD_IN_USE(new_size);
 
-    __atomic_add_fetch(&total_in_use, afterSize, __ATOMIC_RELAXED);
+            MALLOC_STAT_INC_DEALLOCATIONS();
+            MALLOC_STAT_INC_ALLOCATIONS();
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        if ( ptr ) {
-            log_mem("realloc_free", ptr, prevSize);
+            MALLOC_STAT_ADD_DEALLOCATED(old_size);
+            MALLOC_STAT_ADD_ALLOCATED(new_size);
+
+            MALLOC_STAT_TRACE((ptr != ret ? "realloc-realloc" : "realloc-inplace"), ret, new_size);
+
+            return ret;
+        } else { // free case
+            MALLOC_STAT_INC_DEALLOCATIONS();
+
+            MALLOC_STAT_ADD_DEALLOCATED(old_size);
+
+            MALLOC_STAT_TRACE("realloc-free", ptr, old_size);
+
+            return real_realloc(ptr, 0);
         }
-
-        log_mem("realloc_alloc", ret, afterSize);
-        in_trace = 0;
     }
 
-    return ret;
+    if ( size ) { // malloc case
+        void *ret = real_realloc(NULL, size);
+        size_t allocated = malloc_usable_size(ret);
+        
+        MALLOC_STAT_INC_ALLOCATIONS();
+        MALLOC_STAT_ADD_IN_USE(allocated);
+
+        MALLOC_STAT_ADD_ALLOCATED(allocated);
+
+        MALLOC_STAT_TRACE("realloc-malloc", ret, allocated);
+
+        return ret;
+    }
+
+    return NULL;
 }
 
 void* memalign(size_t alignment, size_t size) {
@@ -405,39 +494,33 @@ void* memalign(size_t alignment, size_t size) {
         return NULL;
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
     void *ret = real_memalign(alignment, size);
-    size_t sizeAllocated = malloc_usable_size(ret);
+    size_t allocated = malloc_usable_size(ret);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("memalign", ret, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("memalign", ret, allocated);
 
     return ret;
 }
 
-int posix_memalign(void **memptr, size_t alignment, size_t size) {
+int posix_memalign(void **ptr, size_t alignment, size_t size) {
     if ( !DL_RESOLVE_CHECK(posix_memalign) ) {
         return ENOMEM;
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
-    int ret = real_posix_memalign(memptr, alignment, size);
-    size_t sizeAllocated = malloc_usable_size(*memptr);
+    int ret = real_posix_memalign(ptr, alignment, size);
+    size_t allocated = malloc_usable_size(*ptr);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("posix_memalign", *memptr, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("posix_memalign", *ptr, allocated);
 
     return ret;
 }
@@ -447,18 +530,15 @@ void* valloc(size_t size) {
        return NULL;
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
     void *ret = real_valloc(size);
-    size_t sizeAllocated = malloc_usable_size(ret);
+    size_t allocated = malloc_usable_size(ret);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("valloc", ret, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("valloc", ret, allocated);
 
     return ret;
 }
@@ -468,18 +548,15 @@ void* pvalloc(size_t size) {
         return NULL;
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
     void *ret = real_pvalloc(size);
-    size_t sizeAllocated = malloc_usable_size(ret);
+    size_t allocated = malloc_usable_size(ret);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("pvalloc", ret, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("pvalloc", ret, allocated);
 
     return ret;
 }
@@ -489,18 +566,15 @@ void* aligned_alloc(size_t alignment, size_t size) {
         return NULL;
     }
 
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_ALLOCATIONS();
 
     void *ret = real_aligned_alloc(alignment, size);
-    size_t sizeAllocated = malloc_usable_size(ret);
+    size_t allocated = malloc_usable_size(ret);
 
-    __atomic_add_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    MALLOC_STAT_ADD_ALLOCATED(allocated);
+    MALLOC_STAT_ADD_IN_USE(allocated);
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem("aligned_alloc", ret, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("aligned_alloc", ret, allocated);
 
     return ret;
 }
@@ -511,21 +585,22 @@ void free(void *ptr) {
         return;
     }
 
-    size_t sizeAllocated = 0;
-    if ( ptr ) {
-        __atomic_add_fetch(&total_deallocations, 1, __ATOMIC_RELAXED);
+    MALLOC_STAT_INC_DEALLOCATIONS();
 
-        size_t sizeAllocated = malloc_usable_size(ptr);
-        __atomic_sub_fetch(&total_in_use, sizeAllocated, __ATOMIC_RELAXED);
+    if ( ptr ) {
+        size_t allocated = malloc_usable_size(ptr);
+
+        MALLOC_STAT_ADD_DEALLOCATED(allocated);
+        MALLOC_STAT_SUB_IN_USE(allocated);
+
+        MALLOC_STAT_TRACE("free", ptr, allocated);
 
         real_free(ptr);
+
+        return;
     }
 
-    if ( !in_trace ) {
-        in_trace = 1;
-        log_mem((ptr ? "free" : "free(NULL)"), ptr, sizeAllocated);
-        in_trace = 0;
-    }
+    MALLOC_STAT_TRACE("free(NULL)", NULL, 0);
 }
 
 /* EOF */

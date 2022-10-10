@@ -27,18 +27,25 @@
 /* the malloc_stat_vars struct is used for retrieving
  * the information about the current stat.
  */
-typedef struct malloc_stat_vars {
+typedef struct {
     uint64_t allocations;
+    uint64_t allocated;
     uint64_t deallocations;
+    uint64_t deallocated;
     uint64_t in_use;
+    uint64_t peak_in_use;
 } malloc_stat_vars;
 
 /* calculate the difference */
 #define MALLOC_STAT_GET_DIFF(before, after) \
     (malloc_stat_vars){ \
-         after.allocations - before.allocations \
+         after.allocations   - before.allocations \
+        ,after.allocated     - before.allocated \
         ,after.deallocations - before.deallocations \
-        ,after.in_use - before.in_use}
+        ,after.deallocated   - before.deallocated \
+        ,after.in_use        - before.in_use \
+        ,after.peak_in_use   - before.peak_in_use \
+    }
 
 /* test for equality */
 #define MALLOC_STAT_IS_EQUAL(left, right) \
@@ -46,8 +53,22 @@ typedef struct malloc_stat_vars {
         && left.deallocations == right.deallocations \
         && left.in_use == right.in_use)
 
+/* the valid operations for 'malloc_stat_get_stat' function */
+typedef enum {
+     MALLOC_STAT_GET   /* get collented stat */
+    ,MALLOC_STAT_RESET /* reset collented stat */
+} malloc_stat_operation;
+
 /* the signature of the provided function pointer used to obtain a stat */
-typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(void);
+typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(malloc_stat_operation op);
+
+/* just a helpers.
+ */
+#define MALLOC_STAT_GET_STAT(fnptr) \
+    fnptr(MALLOC_STAT_GET)
+
+#define MALLOC_STAT_RESET_STAT(fnptr) \
+    fnptr(MALLOC_STAT_RESET)
 
 /* provided to an user to obtain an address of the function
  * which can be used to obtain a stat information.
@@ -62,6 +83,28 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(void);
 #define MALLOC_STAT_GET_STAT_FNPTR() \
     (malloc_stat_get_stat_fnptr)dlsym(RTLD_DEFAULT, "malloc_stat_get_stat")
 
+/* turn on or turn off the logging outout printed to the specified fd-descriptor
+ */
+#define MALLOC_STAT_ENABLE_LOG() { \
+    void (*malloc_stat_log_state_fnptr)(int) = \
+        dlsym(RTLD_DEFAULT, "malloc_stat_change_log_state"); \
+    malloc_stat_log_state_fnptr(1); \
+}
+
+#define MALLOC_STAT_DISABLE_LOG() { \
+    void (*malloc_stat_log_state_fnptr)(int) = \
+        dlsym(RTLD_DEFAULT, "malloc_stat_change_log_state"); \
+    malloc_stat_log_state_fnptr(0); \
+}
+
+/* setting up the FD for logging output
+ */
+#define MALLOC_STAT_SET_LOG_FD(fd) { \
+    void (*malloc_stat_set_log_fd_fnptr)(int) = \
+        dlsym(RTLD_DEFAULT, "malloc_stat_set_log_fd"); \
+    malloc_stat_set_log_fd_fnptr(fd); \
+}
+
 /* just a helpers.
  * example:
  *
@@ -72,16 +115,20 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(void);
  * }
  */
 #define MALLOC_STAT_FPRINT(stream, caption, fnptr) { \
-    malloc_stat_vars stat; \
-    if ( fnptr ) { \
-        stat = fnptr(); \
-    } \
+    malloc_stat_vars stat = MALLOC_STAT_GET_STAT(fnptr); \
     fprintf(stream \
-        ,"%s: +++ %" PRIu64 ", --- %" PRIu64 ", === %" PRIu64 "\n" \
+        ,"%s:\n" \
+         "+=============================================================================\n" \
+          "| allocs  : %-10" PRIu64 ", deallocs: %-10" PRIu64 ", inuse: %-10" PRIu64 "\n" \
+          "| AL bytes: %-10" PRIu64 ", DE bytes: %-10" PRIu64 ", peak : %-10" PRIu64 "\n" \
+          "+=============================================================================\n" \
         ,caption \
         ,stat.allocations \
         ,stat.deallocations \
         ,stat.in_use \
+        ,stat.allocated \
+        ,stat.deallocated \
+        ,stat.peak_in_use \
     ); \
 }
 

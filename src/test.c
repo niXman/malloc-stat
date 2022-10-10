@@ -21,15 +21,15 @@ malloc_stat_get_stat_fnptr get_stat = NULL;
 
 /*************************************************************************************************/
 
-int test_00() {
+static int test_00() {
     malloc_stat_vars before, after, diff;
 
-    before = get_stat();
+    before = MALLOC_STAT_RESET_STAT(get_stat);
     void *p = malloc(32);
     memset(p, 'x', 32);
     (void)p;
 
-    after = get_stat();
+    after = MALLOC_STAT_GET_STAT(get_stat);
     diff = MALLOC_STAT_GET_DIFF(before, after);
 
     if ( diff.allocations != 1 ) {
@@ -45,16 +45,16 @@ int test_00() {
     return 0;
 }
 
-int test_01() {
+static int test_01() {
     malloc_stat_vars before_malloc, after_malloc
         ,after_free, diff_after_malloc;
 
-    before_malloc = get_stat();
+    before_malloc = MALLOC_STAT_RESET_STAT(get_stat);
     void *p = malloc(32);
     memset(p, 'x', 32);
     (void)p;
 
-    after_malloc = get_stat();
+    after_malloc = MALLOC_STAT_GET_STAT(get_stat);
     diff_after_malloc = MALLOC_STAT_GET_DIFF(before_malloc, after_malloc);
 
     if ( diff_after_malloc.allocations != 1 ) {
@@ -70,7 +70,7 @@ int test_01() {
 
     free(p);
 
-    after_free = get_stat();
+    after_free = MALLOC_STAT_GET_STAT(get_stat);
     if ( after_free.allocations != before_malloc.allocations + 1 ) {
         return 4;
     }
@@ -79,6 +79,94 @@ int test_01() {
     }
     if ( after_free.in_use != before_malloc.in_use ) {
         return 5;
+    }
+
+    return 0;
+}
+
+/*************************************************************************************************/
+
+// realloc test
+static int test_02() {
+    malloc_stat_vars stat;
+
+    MALLOC_STAT_RESET_STAT(get_stat);
+
+    // realloc alloc case
+    void *p = realloc(NULL, 32);
+    uint64_t allocated_0 = MALLOC_STAT_ALLOCATED_SIZE(p);
+
+    stat = MALLOC_STAT_GET_STAT(get_stat);
+    if ( stat.allocations != 1 ) {
+        return 1;
+    }
+    if ( stat.in_use != allocated_0 ) {
+        return 2;
+    }
+    if ( stat.allocated != allocated_0 ) {
+        return 3;
+    }
+
+    // realloc inplace
+    p = realloc(p, 64);
+    uint64_t allocated_1 = MALLOC_STAT_ALLOCATED_SIZE(p);
+
+    stat = MALLOC_STAT_GET_STAT(get_stat);
+    if ( stat.allocations != 2) {
+        return 4;
+    }
+    if ( stat.in_use != allocated_1 ) {
+        return 5;
+    }
+    if ( stat.allocated != allocated_0 + allocated_1 ) {
+        return 6;
+    }
+    if ( stat.deallocations != 1 ) {
+        return 7;
+    }
+    if ( stat.deallocated != allocated_0 ) {
+        return 8;
+    }
+
+    // real realloc
+    p = realloc(p, 1024*1024);
+    uint64_t allocated_2 = MALLOC_STAT_ALLOCATED_SIZE(p);
+
+    stat = MALLOC_STAT_GET_STAT(get_stat);
+    if ( stat.allocations != 3 ) {
+        return 9;
+    }
+    if ( stat.deallocations != 2 ) {
+        return 10;
+    }
+    if ( stat.allocated != allocated_0 + allocated_1 + allocated_2 ) {
+        return 11;
+    }
+    if ( stat.deallocated != allocated_0 + allocated_1 ) {
+        return 12;
+    }
+    if ( stat.in_use != allocated_2 ) {
+        return 13;
+    }
+
+    // realloc free case
+    p = realloc(p, 0);
+
+    stat = MALLOC_STAT_GET_STAT(get_stat);
+    if ( stat.allocations != 3 ) {
+        return 14;
+    }
+    if ( stat.deallocations != 3 ) {
+        return 15;
+    }
+    if ( stat.allocated != allocated_0 + allocated_1 + allocated_2 ) {
+        return 16;
+    }
+    if ( stat.deallocated != allocated_0 + allocated_1 + allocated_2 ) {
+        return 17;
+    }
+    if ( stat.in_use != 0 ) {
+        return 18;
     }
 
     return 0;
@@ -102,6 +190,7 @@ int main() {
 
     TEST(test_00);
     TEST(test_01);
+    TEST(test_02);
 }
 
 /*************************************************************************************************/
