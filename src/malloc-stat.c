@@ -372,8 +372,8 @@ void malloc_stat_fini_lib(void) {
         s = snprintf(
              buf, sizeof(buf)
             ,"+=============================================================================\n"
-             "| allocs  : %-10" PRIu64 ", deallocs: %-10" PRIu64 ", inuse: %-10" PRIu64 "\n"
-             "| AL bytes: %-10" PRIu64 ", DE bytes: %-10" PRIu64 ", peak : %-10" PRIu64 "\n"
+             "| allocs  : %-12" PRIu64 ", deallocs: %-12" PRIu64 ", inuse: %-12" PRIu64 "\n"
+             "| AL bytes: %-12" PRIu64 ", DE bytes: %-12" PRIu64 ", peak : %-12" PRIu64 "\n"
              "+=============================================================================\n"
             ,total_allocations, total_deallocations, total_in_use
             ,total_allocated, total_deallocated, peak_in_use
