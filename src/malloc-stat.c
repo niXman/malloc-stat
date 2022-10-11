@@ -547,7 +547,7 @@ void* realloc(void *ptr, size_t size) {
 
         MALLOC_STAT_ADD_ALLOCATED(allocated);
 
-        MALLOC_STAT_TRACE("realloc-malloc", ret, allocated);
+        MALLOC_STAT_TRACE("realloc-alloc", ret, allocated);
 
         return ret;
     }
