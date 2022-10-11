@@ -18,6 +18,17 @@
 #include <malloc.h>
 #include <dlfcn.h>
 
+/* stringize macro
+ */
+#define MALLOC_STAT_STRINGIZE_I(x) #x
+#define MALLOC_STAT_STRINGIZE(x) \
+    MALLOC_STAT_STRINGIZE_I(x)
+
+/* file-line string maker macro
+ */
+#define MALLOC_STAT_MAKE_FILE_LINE() \
+    __FILE__ "(" MALLOC_STAT_STRINGIZE(__LINE__) ")"
+
 /* will returns the size of really allocated block.
  * just a wraper for the malloc's malloc_usable_size()
  */
