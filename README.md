@@ -98,7 +98,7 @@ On the log processing computer a pipe and netcat can be used to direct the data 
 ```
 # PID 5625
 # EXE /usr/bin/gedit
-# CWD /home/rizsi/github-qgears/log-malloc-simple/c
+# CWD /home/nixman/projects/malloc-stat/src
 # MAPS
 
 ...
@@ -106,12 +106,6 @@ On the log processing computer a pipe and netcat can be used to direct the data 
 + INIT 32 0x7f1a9b04e140
 -
 + malloc 40 0xadf010
-/usr/lib/x86_64-linux-gnu/libstdc++.so.6(_Znwm+0x18)[0x7f1a9156e698]
-/usr/lib/x86_64-linux-gnu/libstdc++.so.6(_ZNSs4_Rep9_S_createEmmRKSaIcE+0x59)[0x7f1a915d26f9]
-/usr/lib/x86_64-linux-gnu/libstdc++.so.6(_ZNSs12_S_constructIPKcEEPcT_S3_RKSaIcESt20forward_iterator_tag+0x35)[0x7f1a915d4165]
-/usr/lib/x86_64-linux-gnu/libstdc++.so.6(_ZNSsC2EPKcRKSaIcE+0x36)[0x7f1a915d45b6]
-/usr/lib/x86_64-linux-gnu/libboost_filesystem.so.1.55.0(+0x6921)[0x7f1a8ee3a921]
-/lib64/ld-linux-x86-64.so.2(+0x105ba)[0x7f1a9b05f5ba]
 -
 
 ...
