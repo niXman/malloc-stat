@@ -119,8 +119,8 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(malloc_stat_operation op)
     fprintf(stream \
         ,"%s:\n" \
          "+=============================================================================\n" \
-          "| allocs  : %-12" PRIu64 ", deallocs: %-12" PRIu64 ", inuse: %-12" PRIu64 "\n" \
-          "| AL bytes: %-12" PRIu64 ", DE bytes: %-12" PRIu64 ", peak : %-12" PRIu64 "\n" \
+          "| allocs  : %-14" PRIu64 ", deallocs: %-14" PRIu64 ", inuse: %-14" PRIu64 "\n" \
+          "| AL bytes: %-14" PRIu64 ", DE bytes: %-14" PRIu64 ", peak : %-14" PRIu64 "\n" \
           "+=============================================================================\n" \
         ,caption \
         ,stat.allocations \
