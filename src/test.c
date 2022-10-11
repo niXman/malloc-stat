@@ -198,7 +198,13 @@ static const char* test_02() {
 
 #define TEST(name) { \
     const char *r = name(); \
-    fprintf(stdout, "test \"%s\" - %5s, ec=%s\n", #name, (!r ? "OK" : "ERROR"), r); \
+    fprintf( \
+         stdout \
+        ,"test \"%s\" - %5s, ec=%s\n" \
+        ,#name \
+        ,(!r ? "OK" : "ERROR") \
+        ,(r ? r : "0") \
+    ); \
 }
 
 int main() {
