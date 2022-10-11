@@ -208,17 +208,54 @@ static const char* test_02() {
 }
 
 int main() {
+    /* for stdout FD redirection */
+    char buffer[128+1] = {0};
+    int my_pipe[2];
+
     /* warming up the output stream so it can allocate required buffers */
     fprintf(stdout, "warming up the stdout stream!\n");
 
+    /* get the pointer to the exported function */
     get_stat = MALLOC_STAT_GET_STAT_FNPTR();
     assert(get_stat);
 
-    MALLOC_STAT_PRINT("stat from main()", get_stat);
+    /* get the collected stat */
+    malloc_stat_vars stat = MALLOC_STAT_GET_STAT(get_stat);
+
+    /* print the saved stat */
+    MALLOC_STAT_PRINT("stat from main-0", stat);
+
+    /* reset the stat */
+    MALLOC_STAT_RESET_STAT(get_stat);
+
+    volatile char *p = malloc(32);
+    *p = 0;
+
+    /* print the stat using an easier way */
+    MALLOC_STAT_SHOW("stat from main-1", get_stat);
+
+    /* enable logging produced by malloc-stat.so */
+    MALLOC_STAT_ENABLE_LOG();
+
+    /* create the pipe */
+    assert(pipe(my_pipe) == 0);
+
+    /* ask the malloc-stat.so to write the stat into the provided FD */
+    MALLOC_STAT_SET_LOG_FD(my_pipe[1]);
+
+    p = realloc((void *)p, 64);
+
+    assert(read(my_pipe[0], buffer, sizeof(buffer)-1) > 0);
+    assert(strstr(buffer, "realloc-inplace"));
+
+    /* disable logging produced by malloc-stat.so */
+    MALLOC_STAT_DISABLE_LOG();
 
     TEST(test_00);
     TEST(test_01);
     TEST(test_02);
+
+    return *p;
 }
 
 /*************************************************************************************************/

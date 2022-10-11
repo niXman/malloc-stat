@@ -122,11 +122,10 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(malloc_stat_operation op)
  * int main() {
  *     malloc_stat_get_stat_fnptr get_stat = MALLOC_STAT_GET_STAT_FNPTR();
  *     assert(get_stat);
- *     MALLOC_STAT_FPRINT(stdout, "before any allocation", get_stat);
+ *     MALLOC_STAT_SHOW(stdout, "before any allocation", get_stat);
  * }
  */
-#define MALLOC_STAT_FPRINT(stream, caption, fnptr) { \
-    malloc_stat_vars stat = MALLOC_STAT_GET_STAT(fnptr); \
+#define MALLOC_STAT_FPRINT(stream, caption, stat) \
     fprintf(stream \
         ,"%s:\n" \
          "+==========================================================================+\n" \
@@ -140,10 +139,15 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(malloc_stat_operation op)
         ,stat.allocated \
         ,stat.deallocated \
         ,stat.peak_in_use \
-    ); \
-}
+    );
 
-#define MALLOC_STAT_PRINT(caption, fnptr) \
-    MALLOC_STAT_FPRINT(stdout, caption, fnptr)
+#define MALLOC_STAT_PRINT(caption, stat) \
+    MALLOC_STAT_FPRINT(stdout, caption, stat)
+
+#define MALLOC_STAT_FSHOW(stream, caption, fnptr) \
+    MALLOC_STAT_FPRINT(stream, caption, MALLOC_STAT_GET_STAT(fnptr))
+
+#define MALLOC_STAT_SHOW(caption, fnptr) \
+    MALLOC_STAT_FPRINT(stdout, caption, MALLOC_STAT_GET_STAT(fnptr))
 
 #endif // __malloc_stat__api_h

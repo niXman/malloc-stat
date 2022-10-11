@@ -1,7 +1,11 @@
 malloc-stat
 =================
 
-*malloc-stat* is **pre-loadable** library tracking all memory allocations of a program based in [malloc-stat-simple](https://github.com/qgears/log-malloc-simple). It produces simple text output by user request, that makes it easy to analyse alloc/free usage and find leaks and also identify their origin.
+*malloc-stat* is a **pre-loadable** **C** library tracking all memory allocations/deallocations of a program.
+
+Based in [malloc-stat-simple](https://github.com/qgears/log-malloc-simple).
+
+It produces simple text output by user request, that makes it easy to analyse alloc/free usage and find leaks and also identify their origin.
 
 ## Features
 
@@ -15,6 +19,50 @@ malloc-stat
 - call stack **backtrace** using GNU [backtrace()](https://man7.org/linux/man-pages/man3/backtrace.3.html) (WIP)
 - thread safe
 - simple api to reset/get statistic on fly
+
+## API
+
+```c
+#include <malloc-stat/api.h>
+
+int main() {
+    malloc_stat_get_stat_fnptr get_stat = MALLOC_STAT_GET_STAT_FNPTR();
+    assert(get_stat);
+
+    /* print some string to warming up the output stream so it can allocate required buffers */
+    printf("hello from main!\n");
+
+    /* grab the stat */
+    malloc_stat_vars stat = MALLOC_STAT_GET_STAT(get_stat);
+
+    /* print the stat */
+    MALLOC_STAT_PRINT("before malloc", stat);
+
+    volatile char *p = malloc(32);
+    *p = 0;
+
+    /* the easier way */
+    MALLOC_STAT_SHOW("after malloc", get_stat);
+
+    /* reset the collected stat */
+    MALLOC_STAT_RESET_STAT(get_stat);
+
+    /* enable logging */
+    MALLOC_STAT_ENABLE_LOG();
+
+    /* set the output FD as stdout */
+    MALLOC_STAT_SET_LOG_FD(STDOUT_FILENO);
+
+    p = realloc((void *)p, 64);
+
+    MALLOC_STAT_SHOW("after realloc", get_stat);
+
+    /* `p` was not freed, so we will see that in the report produced 
+     * into `stdout` the leaked memory on destruction stage of malloc-stat.so
+     */
+    return *p;
+}
+```
 
 ## Caveats
 

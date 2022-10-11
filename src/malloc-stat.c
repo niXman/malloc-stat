@@ -98,7 +98,7 @@ static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 
 /* DL resolving */
 #define DL_RESOLVE(fn) \
-    ((!real_ ## fn) ? (real_ ## fn = dlsym(RTLD_NEXT, # fn)) : (real_ ## fn = ((void *)0x1)))
+    ((!real_ ## fn) ? (real_ ## fn = dlsym(RTLD_NEXT, #fn)) : (real_ ## fn = ((void *)0x1)))
 
 #define DL_RESOLVE_CHECK(fn) \
     ((!real_ ## fn) ? malloc_stat_init_lib() : 1)
@@ -107,7 +107,7 @@ static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 static sig_atomic_t init_done = LOG_MALLOC_INIT_NULL;
 
 /* output is disabled because the lineno does not exist */
-static int memlog_disabled = true;
+static int memlog_enabled = false;
 
 /* log output fd */
 static int memlog_fd = LOG_MALLOC_TRACE_FD;
@@ -124,11 +124,11 @@ static __thread int in_trace = 0;
 }
 
 #define MALLOC_STAT_WRITE_LOG(ptr, size) \
-    (!memlog_disabled ? write(memlog_fd, buf, size) : 0)
+    (memlog_enabled ? write(memlog_fd, buf, size) : 0)
 
 static inline void log_mem(const char *method, void *ptr, size_t size) {
     /* Prevent preparing the output in memory in case the output is already closed */
-    if ( !memlog_disabled ) {
+    if ( memlog_enabled ) {
         char buf[LOG_BUFSIZE];
         int len = snprintf(
              buf
@@ -320,7 +320,7 @@ malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
 }
 
 void malloc_stat_change_log_state(int op) {
-    memlog_disabled = !op;
+    memlog_enabled = op;
 }
 
 void malloc_stat_set_log_fd(int fd) {
@@ -339,15 +339,15 @@ int malloc_stat_init_lib(void) {
         return 1;
     }
 
-    if ( !memlog_disabled ) {
+    if ( memlog_enabled ) {
         int w = write(memlog_fd, "INIT\n", 5);
         /* auto-disable trace if file is not open  */
         if ( w == -1 && errno == EBADF ) {
             write(STDERR_FILENO, "1022_CLOSED\n", 12);
-            memlog_disabled = true;
+            memlog_enabled = false;
         } else {
             write(STDERR_FILENO, "1022_OPEN\n", 10);
-            memlog_disabled = false;
+            memlog_enabled = true;
         }
     }
 
@@ -368,7 +368,7 @@ int malloc_stat_init_lib(void) {
     //TODO: call backtrace here to init itself
 
     /* post-init status */
-    if( !memlog_disabled ) {
+    if( memlog_enabled ) {
         int s;
         char path[256];
         char buf[LOG_BUFSIZE + sizeof(path)];
@@ -407,7 +407,7 @@ void malloc_stat_fini_lib(void) {
         return;
     }
 
-    if ( !memlog_disabled ) {
+    if ( memlog_enabled ) {
         int s;
         char buf[LOG_BUFSIZE];
 
