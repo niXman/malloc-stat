@@ -200,44 +200,82 @@ static uint64_t total_in_use = 0;
 static uint64_t peak_in_use = 0;
 
 /* helpers */
-#define MALLOC_STAT_INC_ALLOCATIONS() \
-    __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED)
+#ifndef MALLOC_STAT_ATOMICS_DISABLED
+#   define MALLOC_STAT_ATOMIC_LOAD(var) \
+        __atomic_load_n(&var, __ATOMIC_SEQ_CST)
 
-#define MALLOC_STAT_INC_DEALLOCATIONS() \
-    __atomic_add_fetch(&total_deallocations, 1, __ATOMIC_RELAXED)
+#   define MALLOC_STAT_ATOMIC_STORE(var, val) \
+        __atomic_store_n(&var, val, __ATOMIC_RELAXED)
 
-#define MALLOC_STAT_ADD_ALLOCATED(size) \
-    __atomic_add_fetch(&total_allocated, size, __ATOMIC_RELAXED)
+#   define MALLOC_STAT_INC_ALLOCATIONS() \
+        __atomic_add_fetch(&total_allocations, 1, __ATOMIC_RELAXED)
 
-#define MALLOC_STAT_ADD_DEALLOCATED(size) \
-    __atomic_add_fetch(&total_deallocated, size, __ATOMIC_RELAXED)
+#   define MALLOC_STAT_INC_DEALLOCATIONS() \
+        __atomic_add_fetch(&total_deallocations, 1, __ATOMIC_RELAXED)
 
-#define MALLOC_STAT_ADD_IN_USE(size) \
-    __atomic_add_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+#   define MALLOC_STAT_ADD_ALLOCATED(size) \
+        __atomic_add_fetch(&total_allocated, size, __ATOMIC_RELAXED)
 
-#define MALLOC_STAT_SUB_IN_USE(size) \
-    __atomic_sub_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+#   define MALLOC_STAT_ADD_DEALLOCATED(size) \
+        __atomic_add_fetch(&total_deallocated, size, __ATOMIC_RELAXED)
 
-#define MALLOC_STAT_UPDATE_PEAK() \
-    for ( uint64_t peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
-         ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
-        ; \
-          peak < in_use \
-        ; \
-          peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
-         ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
-    ) { \
-        if ( __atomic_compare_exchange_n( \
-             &peak_in_use \
-            ,&peak \
-            ,in_use \
-            ,false \
-            ,__ATOMIC_SEQ_CST \
-            ,__ATOMIC_RELAXED \
-        ) ) { \
-            break; \
-        }\
-    }
+#   define MALLOC_STAT_ADD_IN_USE(size) \
+        __atomic_add_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+
+#   define MALLOC_STAT_SUB_IN_USE(size) \
+        __atomic_sub_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+
+#   define MALLOC_STAT_UPDATE_PEAK() \
+        for ( uint64_t peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
+             ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
+            ; \
+              peak < in_use \
+            ; \
+              peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
+             ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
+        ) { \
+            if ( __atomic_compare_exchange_n( \
+                 &peak_in_use \
+                ,&peak \
+                ,in_use \
+                ,false \
+                ,__ATOMIC_SEQ_CST \
+                ,__ATOMIC_RELAXED \
+            ) ) { \
+                break; \
+            }\
+        }
+#else // MALLOC_STAT_ATOMICS_DISABLED
+#   define MALLOC_STAT_ATOMIC_LOAD(var) \
+        var
+
+#   define MALLOC_STAT_ATOMIC_STORE(var, val) \
+        var = val
+
+#   define MALLOC_STAT_INC_ALLOCATIONS() \
+        total_allocations += 1
+
+#   define MALLOC_STAT_INC_DEALLOCATIONS() \
+        total_deallocations += 1
+
+#   define MALLOC_STAT_ADD_ALLOCATED(size) \
+        total_allocated += size
+
+#   define MALLOC_STAT_ADD_DEALLOCATED(size) \
+        total_deallocated += size
+
+#   define MALLOC_STAT_ADD_IN_USE(size) \
+        total_in_use += size
+
+#   define MALLOC_STAT_SUB_IN_USE(size) \
+        total_in_use -= size
+
+#   define MALLOC_STAT_UPDATE_PEAK() \
+        peak_in_use = (peak_in_use < total_in_use) \
+            ? total_in_use \
+            : peak_in_use
+
+#endif // MALLOC_STAT_ATOMICS_DISABLED
 
 /* stat routine */
 malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
@@ -249,21 +287,21 @@ malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
     switch ( op ) {
         case MALLOC_STAT_GET: break;
         case MALLOC_STAT_RESET: {
-            __atomic_store_n(&total_allocations, 0, __ATOMIC_RELAXED);
-            __atomic_store_n(&total_allocated, 0, __ATOMIC_RELAXED);
-            __atomic_store_n(&total_deallocations, 0, __ATOMIC_RELAXED);
-            __atomic_store_n(&total_deallocated, 0, __ATOMIC_RELAXED);
-            __atomic_store_n(&total_in_use, 0, __ATOMIC_RELAXED);
-            __atomic_store_n(&peak_in_use, 0, __ATOMIC_RELAXED);
+            MALLOC_STAT_ATOMIC_STORE(total_allocations, 0);
+            MALLOC_STAT_ATOMIC_STORE(total_allocated, 0);
+            MALLOC_STAT_ATOMIC_STORE(total_deallocations, 0);
+            MALLOC_STAT_ATOMIC_STORE(total_deallocated, 0);
+            MALLOC_STAT_ATOMIC_STORE(total_in_use, 0);
+            MALLOC_STAT_ATOMIC_STORE(peak_in_use, 0);
         } break;
     }
 
-    res.allocations   = __atomic_load_n(&total_allocations, __ATOMIC_SEQ_CST);
-    res.allocated     = __atomic_load_n(&total_allocated, __ATOMIC_SEQ_CST);
-    res.deallocations = __atomic_load_n(&total_deallocations, __ATOMIC_SEQ_CST);
-    res.deallocated   = __atomic_load_n(&total_deallocated, __ATOMIC_SEQ_CST);
-    res.in_use        = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST);
-    res.peak_in_use   = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST);
+    res.allocations   = MALLOC_STAT_ATOMIC_LOAD(total_allocations);
+    res.allocated     = MALLOC_STAT_ATOMIC_LOAD(total_allocated);
+    res.deallocations = MALLOC_STAT_ATOMIC_LOAD(total_deallocations);
+    res.deallocated   = MALLOC_STAT_ATOMIC_LOAD(total_deallocated);
+    res.in_use        = MALLOC_STAT_ATOMIC_LOAD(total_in_use);
+    res.peak_in_use   = MALLOC_STAT_ATOMIC_LOAD(peak_in_use);
 
     return res;
 }
