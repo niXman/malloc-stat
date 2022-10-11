@@ -107,7 +107,7 @@ static void *(*real_aligned_alloc)(size_t alignment, size_t size) = NULL;
 static sig_atomic_t init_done = LOG_MALLOC_INIT_NULL;
 
 /* output is disabled because the lineno does not exist */
-static int memlog_disabled = false;
+static int memlog_disabled = true;
 
 /* log output fd */
 static int memlog_fd = LOG_MALLOC_TRACE_FD;
@@ -193,10 +193,13 @@ static int static_pointer = 0;
 
 /* stat variables */
 static uint64_t total_allocations = 0;
-static uint64_t total_allocated = 0;
 static uint64_t total_deallocations = 0;
+// static uint64_t simult_allocations = 0; // WIP
+// static uint64_t peak_allocations = 0;
+
+static uint64_t total_allocated = 0;
 static uint64_t total_deallocated = 0;
-static uint64_t total_in_use = 0;
+static uint64_t simult_in_use = 0;
 static uint64_t peak_in_use = 0;
 
 /* helpers */
@@ -220,19 +223,19 @@ static uint64_t peak_in_use = 0;
         __atomic_add_fetch(&total_deallocated, size, __ATOMIC_RELAXED)
 
 #   define MALLOC_STAT_ADD_IN_USE(size) \
-        __atomic_add_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+        __atomic_add_fetch(&simult_in_use, size, __ATOMIC_RELAXED)
 
 #   define MALLOC_STAT_SUB_IN_USE(size) \
-        __atomic_sub_fetch(&total_in_use, size, __ATOMIC_RELAXED)
+        __atomic_sub_fetch(&simult_in_use, size, __ATOMIC_RELAXED)
 
 #   define MALLOC_STAT_UPDATE_PEAK() \
         for ( uint64_t peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
-             ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
+             ,in_use = __atomic_load_n(&simult_in_use, __ATOMIC_SEQ_CST) \
             ; \
               peak < in_use \
             ; \
               peak = __atomic_load_n(&peak_in_use, __ATOMIC_SEQ_CST) \
-             ,in_use = __atomic_load_n(&total_in_use, __ATOMIC_SEQ_CST) \
+             ,in_use = __atomic_load_n(&simult_in_use, __ATOMIC_SEQ_CST) \
         ) { \
             if ( __atomic_compare_exchange_n( \
                  &peak_in_use \
@@ -265,17 +268,27 @@ static uint64_t peak_in_use = 0;
         total_deallocated += size
 
 #   define MALLOC_STAT_ADD_IN_USE(size) \
-        total_in_use += size
+        simult_in_use += size
 
 #   define MALLOC_STAT_SUB_IN_USE(size) \
-        total_in_use -= size
+        simult_in_use -= size
 
 #   define MALLOC_STAT_UPDATE_PEAK() \
-        peak_in_use = (peak_in_use < total_in_use) \
-            ? total_in_use \
+        peak_in_use = (peak_in_use < simult_in_use) \
+            ? simult_in_use \
             : peak_in_use
 
 #endif // MALLOC_STAT_ATOMICS_DISABLED
+
+/* backtrace part
+ */
+
+#define MALLOC_STAT_BACKTRACE_SIZE 20
+
+typedef struct {
+    int nptrs;
+    void* ptrs[MALLOC_STAT_BACKTRACE_SIZE + 1];
+} backtrace_stack;
 
 /* stat routine */
 malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
@@ -291,7 +304,7 @@ malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
             MALLOC_STAT_ATOMIC_STORE(total_allocated, 0);
             MALLOC_STAT_ATOMIC_STORE(total_deallocations, 0);
             MALLOC_STAT_ATOMIC_STORE(total_deallocated, 0);
-            MALLOC_STAT_ATOMIC_STORE(total_in_use, 0);
+            MALLOC_STAT_ATOMIC_STORE(simult_in_use, 0);
             MALLOC_STAT_ATOMIC_STORE(peak_in_use, 0);
         } break;
     }
@@ -300,7 +313,7 @@ malloc_stat_vars malloc_stat_get_stat(malloc_stat_operation op) {
     res.allocated     = MALLOC_STAT_ATOMIC_LOAD(total_allocated);
     res.deallocations = MALLOC_STAT_ATOMIC_LOAD(total_deallocations);
     res.deallocated   = MALLOC_STAT_ATOMIC_LOAD(total_deallocated);
-    res.in_use        = MALLOC_STAT_ATOMIC_LOAD(total_in_use);
+    res.in_use        = MALLOC_STAT_ATOMIC_LOAD(simult_in_use);
     res.peak_in_use   = MALLOC_STAT_ATOMIC_LOAD(peak_in_use);
 
     return res;
@@ -377,15 +390,6 @@ int malloc_stat_init_lib(void) {
             MALLOC_STAT_WRITE_LOG(buf, s);
         }
         copyfile("# MAPS\n", "/proc/self/maps", memlog_fd);
-        /*
-        s = readlink("/proc/self/maps", path, sizeof(path));
-        if(s > 1)
-        {
-        path[s] = '\0';
-        s = snprintf(buf, sizeof(buf), "# MAPS %s\n", path);
-        MALLOC_STAT_WRITE_LOG(buf, s);
-        }
-        */
 
         s = snprintf(buf, sizeof(buf), "+ INIT \n-\n");
         log_mem("INIT", &static_buffer, static_pointer);
@@ -409,15 +413,15 @@ void malloc_stat_fini_lib(void) {
 
         s = snprintf(
              buf, sizeof(buf)
-            ,"+=============================================================================\n" \
-             "| allocs  : %-14" PRIu64 ", deallocs: %-14" PRIu64 ", inuse: %-14" PRIu64 "\n" \
-             "| AL bytes: %-14" PRIu64 ", DE bytes: %-14" PRIu64 ", peak : %-14" PRIu64 "\n" \
-             "+=============================================================================\n" \
-            ,total_allocations, total_deallocations, total_in_use
+            ,"+==========================================================================+\n"
+             "| allocs  : %-14" PRIu64 "| deallocs: %-14" PRIu64 "| inuse: %-14" PRIu64 "|\n"
+             "| AL bytes: %-14" PRIu64 "| DE bytes: %-14" PRIu64 "| peak : %-14" PRIu64 "|\n"
+             "+==========================================================================+\n"
+            ,total_allocations, total_deallocations, simult_in_use
             ,total_allocated, total_deallocated, peak_in_use
         );
 
-        s += snprintf(buf + s, sizeof(buf) - s, "+ FINI\n-\n");
+        s += snprintf(buf + s, sizeof(buf) - s, "+ FINI\n");
         MALLOC_STAT_WRITE_LOG(buf, s);
     }
 

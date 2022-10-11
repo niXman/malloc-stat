@@ -35,7 +35,7 @@
 #define MALLOC_STAT_ALLOCATED_SIZE(ptr) \
     malloc_usable_size(ptr)
 
-/* the malloc_stat_vars struct is used for retrieving
+/* the malloc_stat_vars struct is used for represent
  * the information about the current stat.
  */
 typedef struct {
