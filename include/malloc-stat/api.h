@@ -45,7 +45,7 @@
     "." MALLOC_STAT_STRINGIZE(MALLOC_STAT_VERSION_BUGFIX)
 
 /* compares the 'MALLOC_STAT_VERSION_MAJOR' with
- * the sealed in the .so library
+ * the sealed in the malloc-stat.so library
  */
 
 #define MALLOC_STAT_CHECK_VERSION() ({ \
