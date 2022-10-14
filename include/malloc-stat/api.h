@@ -49,7 +49,8 @@
  */
 
 #define MALLOC_STAT_CHECK_VERSION() ({ \
-    uint32_t (*fnptr)() = dlsym(RTLD_DEFAULT, "malloc_stat_get_version"); \
+    uint32_t (*fnptr)() = (uint32_t (*)()) \
+        dlsym(RTLD_DEFAULT, "malloc_stat_get_version"); \
     uint32_t version = (fnptr ? fnptr() : 111111); \
     version /= 100000; \
     version == MALLOC_STAT_VERSION_MAJOR; \
