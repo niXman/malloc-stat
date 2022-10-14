@@ -76,10 +76,10 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(malloc_stat_operation op)
 /* just a helpers.
  */
 #define MALLOC_STAT_GET_STAT(fnptr) \
-    fnptr(MALLOC_STAT_GET)
+    (fnptr ? fnptr(MALLOC_STAT_GET) : (malloc_stat_vars){})
 
 #define MALLOC_STAT_RESET_STAT(fnptr) \
-    fnptr(MALLOC_STAT_RESET)
+    (fnptr ? fnptr(MALLOC_STAT_RESET) : (malloc_stat_vars){})
 
 /* provided to an user to obtain an address of the function
  * which can be used to obtain a stat information.
@@ -96,25 +96,22 @@ typedef malloc_stat_vars (*malloc_stat_get_stat_fnptr)(malloc_stat_operation op)
 
 /* turn on or turn off the logging outout printed to the specified fd-descriptor
  */
-#define MALLOC_STAT_ENABLE_LOG() { \
-    void (*malloc_stat_log_state_fnptr)(int) = \
-        dlsym(RTLD_DEFAULT, "malloc_stat_change_log_state"); \
-    malloc_stat_log_state_fnptr(1); \
-}
+#define MALLOC_STAT_ENABLE_LOG() do { \
+    void (*fnptr)(int) = dlsym(RTLD_DEFAULT, "malloc_stat_change_log_state"); \
+    if ( fnptr ) fnptr(1); \
+} while (0)
 
-#define MALLOC_STAT_DISABLE_LOG() { \
-    void (*malloc_stat_log_state_fnptr)(int) = \
-        dlsym(RTLD_DEFAULT, "malloc_stat_change_log_state"); \
-    malloc_stat_log_state_fnptr(0); \
-}
+#define MALLOC_STAT_DISABLE_LOG() do { \
+    void (*fnptr)(int) = dlsym(RTLD_DEFAULT, "malloc_stat_change_log_state"); \
+    if ( fnptr ) fnptr(0); \
+} while (0)
 
 /* setting up the FD for logging output
  */
-#define MALLOC_STAT_SET_LOG_FD(fd) { \
-    void (*malloc_stat_set_log_fd_fnptr)(int) = \
-        dlsym(RTLD_DEFAULT, "malloc_stat_set_log_fd"); \
-    malloc_stat_set_log_fd_fnptr(fd); \
-}
+#define MALLOC_STAT_SET_LOG_FD(fd) do { \
+    void (*fnptr)(int) = dlsym(RTLD_DEFAULT, "malloc_stat_set_log_fd"); \
+    if ( fnptr ) fnptr(fd); \
+} while (0)
 
 /* just a helpers.
  * example:
