@@ -4,9 +4,7 @@
  * Author: niXman
  * https://github.com/niXman/malloc-stat
  *
- * the status can be obtained by using:
- * void malloc_stat_get_stat(uint64_t *allocations, uint64_t *deallocations, uint64_t *in_use),
- * or just by using MACROs from api.h
+ * look at ../include/malloc-stat/api.h for more details.
  *
  * Based on previous implementations by other authors. See their comments below:
  */
