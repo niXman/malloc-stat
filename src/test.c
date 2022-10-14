@@ -196,6 +196,16 @@ static const char* test_02() {
 
 /*************************************************************************************************/
 
+static const char* test_03() {
+    if ( !MALLOC_STAT_CHECK_VERSION() ) {
+        return MALLOC_STAT_MAKE_FILE_LINE();
+    }
+
+    return NULL;
+}
+
+/*************************************************************************************************/
+
 #define TEST(name) { \
     const char *r = name(); \
     fprintf( \
@@ -254,6 +264,7 @@ int main() {
     TEST(test_00);
     TEST(test_01);
     TEST(test_02);
+    TEST(test_03);
 
     return *p;
 }

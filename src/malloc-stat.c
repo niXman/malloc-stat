@@ -4,10 +4,11 @@
  * Author: niXman
  * https://github.com/niXman/malloc-stat
  *
- * look at ../include/malloc-stat/api.h for more details.
+ * for more details look at ../include/malloc-stat/api.h
  *
  * Based on previous implementations by other authors. See their comments below:
  */
+
 /*
  * log-malloc-simple
  *	Malloc logging library with backtrace and byte-exact memory tracking.
@@ -323,6 +324,10 @@ void malloc_stat_change_log_state(int op) {
 
 void malloc_stat_set_log_fd(int fd) {
     memlog_fd = fd;
+}
+
+uint32_t malloc_stat_get_version() {
+    return MALLOC_STAT_VERSION;
 }
 
 /*

@@ -24,7 +24,38 @@
 #define MALLOC_STAT_STRINGIZE(x) \
     MALLOC_STAT_STRINGIZE_I(x)
 
-/* file-line string maker macro
+/*
+ * MALLOC_STAT_VERSION / 100000 is the major version
+ * MALLOC_STAT_VERSION / 100 % 1000 is the minor version
+ * MALLOC_STAT_VERSION % 100 is the bugfix level
+*/
+
+#define MALLOC_STAT_VERSION_MAJOR 0
+#define MALLOC_STAT_VERSION_MINOR 0
+#define MALLOC_STAT_VERSION_BUGFIX 1
+
+#define MALLOC_STAT_VERSION \
+     MALLOC_STAT_VERSION_MAJOR*100000 \
+    +MALLOC_STAT_VERSION_MINOR*1000 \
+    +MALLOC_STAT_VERSION_BUGFIX*10
+
+#define MALLOC_STAT_VERSION_STRING \
+        MALLOC_STAT_STRINGIZE(MALLOC_STAT_VERSION_MAJOR) \
+    "." MALLOC_STAT_STRINGIZE(MALLOC_STAT_VERSION_MINOR) \
+    "." MALLOC_STAT_STRINGIZE(MALLOC_STAT_VERSION_BUGFIX)
+
+/* compares the 'MALLOC_STAT_VERSION_MAJOR' with
+ * the sealed in the .so library
+ */
+
+#define MALLOC_STAT_CHECK_VERSION() ({ \
+    uint32_t (*fnptr)() = dlsym(RTLD_DEFAULT, "malloc_stat_get_version"); \
+    uint32_t version = (fnptr ? fnptr() : 111111); \
+    version /= 100000; \
+    version == MALLOC_STAT_VERSION_MAJOR; \
+})
+
+/* file-line error string maker macro
  */
 #define MALLOC_STAT_MAKE_FILE_LINE() \
     __FILE__ "(" MALLOC_STAT_STRINGIZE(__LINE__) ")"
