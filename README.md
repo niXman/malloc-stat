@@ -1,7 +1,7 @@
 malloc-stat
 =================
 
-*malloc-stat* is a **pre-loadable** **C** library tracking all memory allocations//de-allocations of a program.
+**malloc-stat** is a **pre-loadable** **C** library tracking all memory allocations//de-allocations of a program.
 
 Based in [malloc-stat-simple](https://github.com/qgears/log-malloc-simple).
 
@@ -71,8 +71,8 @@ int main() {
 
 ## Dependencies
 
-- malloc_usable_size() method - could be get rid of but we could not track the size of freed memory chunks. In case we analyze all the logs of the whole lifecycle of the program then it could be accepted.
-- /proc/self/exe, /proc/self/cwd
+- `malloc_usable_size()` method - could be get rid of but we could not track the size of freed memory chunks. In case we analyze all the logs of the whole lifecycle of the program then it could be accepted.
+- `/proc/self/exe`, `/proc/self/cwd`
 
 ## Usage
 
@@ -90,8 +90,8 @@ On the log processing computer a pipe and netcat can be used to direct the data 
 
 ## Building instructions
 
-- cd src && make
-- cd src && make run-test
+- `cd src && make`
+- `cd src && make run-test`
 
 ## Log file format
 
@@ -116,20 +116,20 @@ On the log processing computer a pipe and netcat can be used to direct the data 
 
 * Log stream begins with basic process information lines beginning with `#`
 * `#MAPS` ...: content of /proc/self/maps
-* Log entries start with a line beginning with '+' followed by an entry type name and two numbers (all separated by single space characters):
+* Log entries start with a line beginning with `+` followed by an entry type name and two numbers (all separated by single space characters):
     * First is size in bytes as a decimal number
     * Second is memory address as a hexadecimal constant (eg. 0x1db9010)
-end with a line beginning with '-'
+* End with a line beginning with `-`
 * Log entry types are:
-    * "INIT" - (size and address parameter is not important) means that the analyser tool is set up
-    * "FINI" - (no size and address parameter) means that the process quit
-    * "malloc", "calloc", "memalign", "posix_memalign", "valloc", "pvalloc", "aligned_alloc", "free": These methods have the same names in C
+    * `INIT` - (size and address parameter is not important) means that the analyser tool is set up
+    * `FINI` - (no size and address parameter) means that the process quit
+    * `malloc`, `calloc`, `memalign`, `posix_memalign`, `valloc`, `pvalloc`, `aligned_alloc`, `free`: These methods have the same names in C
     * realloc calls result in double-staged log entries:
-        - "realloc-alloc": a memory was really allocated
-        - "realloc-inplace": a memory was expanded on the same area
-        - "realloc-realloc": a memory was really freed and allocated
-        - "realloc-free": a memory was freed
-* Log entries are closed with a line starting with "-" character
+        - `realloc-alloc`: a memory was really allocated
+        - `realloc-inplace`: a memory was expanded on the same area
+        - `realloc-realloc`: a memory was really freed and allocated
+        - `realloc-free`: a memory was freed
+* Log entries are closed with a line starting with `-` character
 
 # Author
 
