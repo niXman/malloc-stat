@@ -1,7 +1,7 @@
 malloc-stat
 =================
 
-*malloc-stat* is a **pre-loadable** **C** library tracking all memory allocations/deallocations of a program.
+*malloc-stat* is a **pre-loadable** **C** library tracking all memory allocations//de-allocations of a program.
 
 Based in [malloc-stat-simple](https://github.com/qgears/log-malloc-simple).
 
